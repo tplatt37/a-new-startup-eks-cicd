@@ -19,7 +19,7 @@ You need to have the AWS CLI, kubectl, and eksctl installed.
 
 # Architecture
 
-![Diagram - A-new-startup-EKS architecture] (/diagrams/aws-a-new-startup-eks-arch.png)
+![Diagram - A-new-startup-EKS architecture](/diagrams/aws-a-new-startup-eks-arch.png)
 
 This sample creates:
 
@@ -33,7 +33,7 @@ This sample creates:
 
 In addition to the above, there are various IAM Roles, Policies, and Kubernetes objects created as needed.
 
-![Diagram - A-new-startup-EKS pipelines] (/diagrams/aws-a-new-startup-eks-pipelines.png)
+![Diagram - A-new-startup-EKS pipelines](/diagrams/aws-a-new-startup-eks-pipelines.png)
 
 
 In order to understand the application from a k8s perspective, see the Helm Chart. It consists of a Deployment, a Service, a LoadBalancer, and Ingress, Namespace, and ServiceAccount.
