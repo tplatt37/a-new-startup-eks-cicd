@@ -27,9 +27,9 @@ This sample creates:
 * ECR Repo for holding the Container Image of the app
 * A DynamoDB Table, SNS Topic, and SQS queue required by the app
 * Three CI/CD Pipelines:
-** To build a container image of the app
-** To "build" (Lint-really) the Helm Chart - to ensure it's valid
-** And a final pipeline to deploy the latest container image to EKS, using the Helm chart.
+1. To build a container image of the app
+2. To "build" (Lint-really) the Helm Chart - to ensure it's valid
+3. And a final pipeline to deploy the latest container image to EKS, using the Helm chart.
 
 In addition to the above, there are various IAM Roles, Policies, and Kubernetes objects created as needed.
 
