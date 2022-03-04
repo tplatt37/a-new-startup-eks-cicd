@@ -23,10 +23,10 @@ You need to have the AWS CLI, kubectl, and eksctl installed.
 
 This sample creates:
 
-*CodeCommit Repo for the Application code, and a Helm Chart
-*ECR Repo for holding the Container Image of the app
-*A DynamoDB Table, SNS Topic, and SQS queue required by the app
-*Three CI/CD Pipelines:
+* CodeCommit Repo for the Application code, and a Helm Chart
+* ECR Repo for holding the Container Image of the app
+* A DynamoDB Table, SNS Topic, and SQS queue required by the app
+* Three CI/CD Pipelines:
 ** To build a container image of the app
 ** To "build" (Lint-really) the Helm Chart - to ensure it's valid
 ** And a final pipeline to deploy the latest container image to EKS, using the Helm chart.
