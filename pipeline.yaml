@@ -1,0 +1,184 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: A-New-Startup - EKS - Sets up the CI/CD Pipeline for creating Container Image
+
+Parameters:
+  Prefix:
+    Type: String
+    Default: a-new-startup-eks
+    Description: "A Prefix to use on the resource names."
+  
+Resources:
+  
+#  ___  __  ____  ____  ____  __  ____  ____  __    __  __ _  ____ 
+# / __)/  \(    \(  __)(  _ \(  )(  _ \(  __)(  )  (  )(  ( \(  __)
+#( (__(  O )) D ( ) _)  ) __/ )(  ) __/ ) _) / (_/\ )( /    / ) _) 
+# \___)\__/(____/(____)(__)  (__)(__)  (____)\____/(__)\_)__)(____) 
+# 
+#
+
+  # This simple pipeline Builds a Container Image for A-New-Startup, and pushes it to ECR.
+  AppPipeline:
+    Type: 'AWS::CodePipeline::Pipeline'
+    Properties:
+      Name: !Join [ '-', [!Ref Prefix, "containerized"]]
+      ArtifactStore:
+        Type: S3
+        Location: !ImportValue
+          Fn::Join: [ '-', [!Ref Prefix, "ArtifactStoreBucket"]]
+      RoleArn: !ImportValue
+        Fn::Join: [ '-', [!Ref Prefix, "CodePipelineServiceRole"]]
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Application-Code
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: CodeCommit
+              OutputArtifacts:
+                - Name: SourceOutput
+              Configuration:
+                BranchName: "main"
+                RepositoryName: 
+                  Fn::ImportValue:
+                    !Join ["-", [ !Ref Prefix, "AppRepo"]]
+
+                PollForSourceChanges: false
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: Build-App-Container-Image
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                # Need to include the .json files we create as part of the build process
+                - Name: BuildArtifact
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !ImportValue 
+                  Fn::Join: [ '-', [!Ref Prefix, "BuildProject"]]
+              RunOrder: 1
+
+  # This simple pipeline "Builds" the Chart (Does a lint to check and make sure it's valid).
+  ChartPipeline:
+    Type: 'AWS::CodePipeline::Pipeline'
+    Properties:
+      Name: !Join [ '-', [!Ref Prefix, "chart"]]
+      ArtifactStore:
+        Type: S3
+        Location: !ImportValue
+          Fn::Join: [ '-', [!Ref Prefix, "ArtifactStoreBucket"]]
+      RoleArn: !ImportValue
+        Fn::Join: [ '-', [!Ref Prefix, "CodePipelineServiceRole"]]
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Chart
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: CodeCommit
+              OutputArtifacts:
+                - Name: SourceOutput
+              Configuration:
+                BranchName: "main"
+                RepositoryName: 
+                  Fn::ImportValue:
+                    !Join ["-", [ !Ref Prefix, "ChartRepo"]]
+
+                PollForSourceChanges: false
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: Build-Chart
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                # Need to include the .json files we create as part of the build process
+                - Name: BuildArtifact
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !ImportValue 
+                  Fn::Join: [ '-', [!Ref Prefix, "ChartBuildProject"]]
+              RunOrder: 1
+
+  # This pipeline deploys to the EKS cluster using Helm (and the chart created by the other pipeline)
+  # It also ensures the Backend resources (DDB/SNS/SQS) are created and up to date.
+  DeployPipeline:
+    Type: 'AWS::CodePipeline::Pipeline'
+    Properties:
+      Name: !Join [ '-', [!Ref Prefix, "deploy"]]
+      ArtifactStore:
+        Type: S3
+        Location: !ImportValue
+          Fn::Join: [ '-', [!Ref Prefix, "ArtifactStoreBucket"]]
+      RoleArn: !ImportValue
+        Fn::Join: [ '-', [!Ref Prefix, "CodePipelineServiceRole"]]
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Chart
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: CodeCommit
+              OutputArtifacts:
+                - Name: SourceOutput
+              Configuration:
+                BranchName: "main"
+                RepositoryName: 
+                  Fn::ImportValue:
+                    !Join ["-", [ !Ref Prefix, "ChartRepo"]]
+
+                PollForSourceChanges: false
+              RunOrder: 1
+
+        - Name: Deploy-Backend
+          Actions:
+            - Name: Deploy-Backend
+              InputArtifacts:
+                # need to pass backend.yaml through from the source to the deploy stage.
+                - Name: SourceOutput
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_IAM,CAPABILITY_AUTO_EXPAND
+                RoleArn: !ImportValue 
+                  Fn::Join: [ '-', [!Ref Prefix, "CFNDeployRole"]]
+                # We're updating an existing stack.
+                StackName: !Join [ "-", [ !Ref Prefix, "backend"]]
+                TemplatePath: "SourceOutput::backend.yaml"
+
+        - Name: Deploy-k8s
+          Actions:
+            - Name: Deploy-Chart
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                # Need to include the .json files we create as part of the build process
+                - Name: DeployArtifact 
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !ImportValue 
+                  Fn::Join: [ '-', [!Ref Prefix, "DeployBuildProject"]]
+              RunOrder: 1
+           

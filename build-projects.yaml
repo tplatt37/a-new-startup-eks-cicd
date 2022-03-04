@@ -1,0 +1,680 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: A-New-Startup - EKS - Sets up the CodeBuild project and related resources for creating the a-new-startup container image
+
+Parameters:
+  Prefix:
+    Type: String
+    Default: a-new-startup-eks
+    Description: "A Prefix to use on the resource names."
+    
+  ClusterName:
+    Type: String
+    Default: "eks-demo"
+    Description: "The name of the EKS cluster you want to deploy to"
+    
+  Namespace:
+    Type: String
+    Default: "a-new-startup"
+    Description: "The k8s namespace that has been created for this application."
+    
+Resources:
+  
+#
+#  ____  ____ 
+# / ___)( __ \
+# \___ \ (__ (
+# (____/(____/
+#
+
+  # CodePipeline will use this for Artifacts
+  ArtifactStoreBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'AES256'
+
+#
+#  ___  __  ____  ____  ____  _  _  __  __    ____ 
+# / __)/  \(    \(  __)(  _ \/ )( \(  )(  )  (    \
+#( (__(  O )) D ( ) _)  ) _ () \/ ( )( / (_/\ ) D (
+# \___)\__/(____/(____)(____/\____/(__)\____/(____/
+#
+
+  # This project is used to build a Container Image of the a-new-startup app
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+        Name: !Join [ '-', [!Ref Prefix, "container-image-build"]]
+        Artifacts:
+            Type: CODEPIPELINE
+        Cache:
+              Type: LOCAL
+              Modes:
+                - LOCAL_DOCKER_LAYER_CACHE
+        Environment:
+            ComputeType: BUILD_GENERAL1_SMALL
+            # NOTE: Using Ubuntu/4.0 image - Docker already installed
+            Image: aws/codebuild/standard:4.0
+            # Must be on for a container image build
+            PrivilegedMode: true
+            Type: LINUX_CONTAINER
+            EnvironmentVariables:
+            - Name: ACCOUNTID
+              Type: PLAINTEXT
+              Value:
+                Ref:
+                  AWS::AccountId
+            - Name: AWS_DEFAULT_REGION
+              Type: PLAINTEXT
+              Value:
+                Ref:
+                  AWS::Region
+            - Name: OVERRIDE_REPO_NAME
+              Type: PLAINTEXT
+              # Use the ECR repo created in the first stack.
+              Value:
+                Fn::ImportValue:
+                  !Join ["-", [ !Ref Prefix, "AppImage"]]
+        ServiceRole:
+            Fn::GetAtt:
+            - BuildRole
+            - Arn
+        Source:
+            BuildSpec: buildspec-container.yml
+            Type: CODEPIPELINE
+
+  # This project is used to "build" the Helm Chart (really just a simple lint check)
+  ChartBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+        Name: !Join [ '-', [!Ref Prefix, "helm-chart-build"]]
+        Artifacts:
+            Type: CODEPIPELINE
+        Environment:
+            ComputeType: BUILD_GENERAL1_SMALL
+            Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+            PrivilegedMode: false
+            Type: LINUX_CONTAINER
+            EnvironmentVariables:
+            - Name: ACCOUNTID
+              Type: PLAINTEXT
+              Value:
+                Ref:
+                  AWS::AccountId
+            - Name: AWS_DEFAULT_REGION
+              Type: PLAINTEXT
+              Value:
+                Ref:
+                  AWS::Region
+        ServiceRole:
+            Fn::GetAtt:
+            - BuildRole
+            - Arn
+        Source:
+            BuildSpec: buildspec.yml
+            Type: CODEPIPELINE
+
+  # This project is used to deploy to the cluster using Helm (and the Container Image)
+  DeployBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+        Name: !Join [ '-', [!Ref Prefix, "helm-chart-deploy"]]
+        Artifacts:
+            Type: CODEPIPELINE
+        Environment:
+            ComputeType: BUILD_GENERAL1_SMALL
+            Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+            PrivilegedMode: false
+            Type: LINUX_CONTAINER
+            EnvironmentVariables:
+            - Name: ACCOUNT_ID
+              Type: PLAINTEXT
+              Value:
+                Ref:
+                  AWS::AccountId
+            - Name: AWS_DEFAULT_REGION
+              Type: PLAINTEXT
+              Value:
+                Ref:
+                  AWS::Region
+            - Name: CLUSTER_NAME
+              Type: PLAINTEXT
+              Value:
+                Ref:
+                  ClusterName
+            - Name: NAMESPACE
+              Type: PLAINTEXT
+              Value:
+                Ref:
+                  Namespace 
+            - Name: PREFIX
+              Type: PLAINTEXT
+              Value:
+                Ref:
+                  Prefix 
+            - Name: ECR_REPO_NAME
+              Type: PLAINTEXT
+              Value:
+                Fn::ImportValue:
+                  !Join ["-", [ !Ref Prefix, "AppImage"]]
+
+        ServiceRole:
+            Fn::GetAtt:
+            - BuildRole
+            - Arn
+        Source:
+            BuildSpec: buildspec-for-helm-deploy.yml
+            Type: CODEPIPELINE
+
+
+#  ___  __     __   _  _  ____  _  _   __  ____  ___  _  _ 
+# / __)(  )   /  \ / )( \(    \/ )( \ / _\(_  _)/ __)/ )( \
+#( (__ / (_/\(  O )) \/ ( ) D (\ /\ //    \ )( ( (__ ) __ (
+# \___)\____/ \__/ \____/(____/(_/\_)\_/\_/(__) \___)\_)(_/
+# 
+
+  # This is the Rule that kicks off the App build 
+  AmazonCloudWatchEventRule1:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      EventPattern:
+        source:
+          - aws.codecommit
+        detail-type:
+          - CodeCommit Repository State Change
+        resources:
+          - !Join 
+            - ''
+            - - 'arn:aws:codecommit:'
+              - !Ref 'AWS::Region'
+              - ':'
+              - !Ref 'AWS::AccountId'
+              - ':'
+              # Need to retrieve the CodeCommit Repo name from the first stack. It's an Export, so we use ImportValue here.
+              - !ImportValue
+                Fn::Join: ["-", [ !Ref Prefix, "AppRepo"]]
+        detail:
+          event:
+            - referenceCreated
+            - referenceUpdated
+          referenceType:
+            - branch
+          referenceName:
+            - main
+      Targets:
+        - Arn: !Join 
+            - ''
+            - - 'arn:aws:codepipeline:'
+              - !Ref 'AWS::Region'
+              - ':'
+              - !Ref 'AWS::AccountId'
+              - ':'
+              # This pipeline will be created in the next stack... 
+              - !Join ['-',[ !Ref Prefix, 'containerized']]
+          RoleArn: !GetAtt 
+            - AmazonCloudWatchEventRole
+            - Arn
+          Id: codepipeline-AppPipeline
+  
+  # This is the Rule that kicks off the Helm Chart build        
+  AmazonCloudWatchEventRule2:
+      Type: 'AWS::Events::Rule'
+      Properties:
+        EventPattern:
+          source:
+            - aws.codecommit
+          detail-type:
+            - CodeCommit Repository State Change
+          resources:
+            - !Join 
+              - ''
+              - - 'arn:aws:codecommit:'
+                - !Ref 'AWS::Region'
+                - ':'
+                - !Ref 'AWS::AccountId'
+                - ':'
+                # Need to retrieve the CodeCommit Repo name from the first stack. It's an Export, so we use ImportValue here.
+                - !ImportValue
+                  Fn::Join: ["-", [ !Ref Prefix, "ChartRepo"]]
+          detail:
+            event:
+              - referenceCreated
+              - referenceUpdated
+            referenceType:
+              - branch
+            referenceName:
+              - main
+        Targets:
+          - Arn: !Join 
+              - ''
+              - - 'arn:aws:codepipeline:'
+                - !Ref 'AWS::Region'
+                - ':'
+                - !Ref 'AWS::AccountId'
+                - ':'
+                # This pipeline will be created in the next stack... 
+                - !Join ['-',[ !Ref Prefix, 'chart']]
+            RoleArn: !GetAtt 
+              - AmazonCloudWatchEventRole
+              - Arn
+            Id: codepipeline-AppPipeline
+
+  # This is the Rule that kicks off the Helm Deploy - when a new ECR image is pushed.        
+  AmazonCloudWatchEventRule3:
+      Type: 'AWS::Events::Rule'
+      Properties:
+        EventPattern:
+          source:
+            - aws.ecr
+          detail-type:
+            - ECR Image Action
+          detail:
+            repository-name:
+              - !ImportValue
+                Fn::Join: ["-", [ !Ref Prefix, "AppImage"]]
+            # NOTE: We're not specifying an image-tag.  Just trigger the pipeline on ANY image tag (is the default)
+            action-type: 
+              - PUSH
+            result: 
+              - SUCCESS
+  
+        Targets:
+          - Arn: !Join 
+              - ''
+              - - 'arn:aws:codepipeline:'
+                - !Ref 'AWS::Region'
+                - ':'
+                - !Ref 'AWS::AccountId'
+                - ':'
+                # This pipeline will be created in the next stack... 
+                - !Join ['-',[ !Ref Prefix, 'deploy']]
+            RoleArn: !GetAtt 
+              - AmazonCloudWatchEventRole
+              - Arn
+            Id: codepipeline-DeployPipeline
+#  __   __   _  _ 
+# (  ) / _\ ( \/ )
+#  )( /    \/ \/ \
+# (__)\_/\_/\_)(_/
+#
+  AmazonCloudWatchEventRole:
+      Type: 'AWS::IAM::Role'
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - events.amazonaws.com
+              Action: 'sts:AssumeRole'
+        Path: /
+        Policies:
+          # Need to make this policy name unique.  Cloudformation won't do it for us...
+          - PolicyName: !Join
+              - '-'
+              - - !Ref Prefix
+                - "cwe-containerized"
+            PolicyDocument:
+              Version: 2012-10-17
+              Statement:
+                - Effect: Allow
+                  Action: 'codepipeline:StartPipelineExecution'
+                  Resource: !Join 
+                    - ''
+                    - - 'arn:aws:codepipeline:'
+                      - !Ref 'AWS::Region'
+                      - ':'
+                      - !Ref 'AWS::AccountId'
+                      - ':'
+                      - !Join ['-',[ !Ref Prefix, 'containerized']]
+                - Effect: Allow
+                  Action: 'codepipeline:StartPipelineExecution'
+                  Resource: !Join 
+                    - ''
+                    - - 'arn:aws:codepipeline:'
+                      - !Ref 'AWS::Region'
+                      - ':'
+                      - !Ref 'AWS::AccountId'
+                      - ':'
+                      - !Join ['-',[ !Ref Prefix, 'chart']]
+                - Effect: Allow
+                  Action: 'codepipeline:StartPipelineExecution'
+                  Resource: !Join 
+                    - ''
+                    - - 'arn:aws:codepipeline:'
+                      - !Ref 'AWS::Region'
+                      - ':'
+                      - !Ref 'AWS::AccountId'
+                      - ':'
+                      - !Join ['-',[ !Ref Prefix, 'deploy']]
+
+  CodePipelineArtifactStoreBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref ArtifactStoreBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: DenyInsecureConnections
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource: !Join 
+              - ''
+              - - !GetAtt 
+                  - ArtifactStoreBucket
+                  - Arn
+                - /*
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+                    
+  CodePipelineServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSCodePipelineFullAccess
+      Policies:
+        # Need a unique name
+        - PolicyName: !Join
+              - '-'
+              - - !Ref Prefix
+                - "codepipeline-containerized"
+
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'codecommit:CancelUploadArchive'
+                  - 'codecommit:GetBranch'
+                  - 'codecommit:GetCommit'
+                  - 'codecommit:GetUploadArchiveStatus'
+                  - 'codecommit:UploadArchive'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'codedeploy:CreateDeployment'
+                  - 'codedeploy:GetApplicationRevision'
+                  - 'codedeploy:GetDeployment'
+                  - 'codedeploy:GetDeploymentConfig'
+                  - 'codedeploy:RegisterApplicationRevision'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'codebuild:BatchGetBuilds'
+                  - 'codebuild:StartBuild'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'devicefarm:ListProjects'
+                  - 'devicefarm:ListDevicePools'
+                  - 'devicefarm:GetRun'
+                  - 'devicefarm:GetUpload'
+                  - 'devicefarm:CreateUpload'
+                  - 'devicefarm:ScheduleRun'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                  - 'lambda:ListFunctions'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'elasticbeanstalk:*'
+                  - 'ec2:*'
+                  - 'elasticloadbalancing:*'
+                  - 'autoscaling:*'
+                  - 'cloudwatch:*'
+                  - 's3:*'
+                  - 'sns:*'
+                  - 'cloudformation:*'
+                  - 'rds:*'
+                  - 'sqs:*'
+                  - 'ecs:*'
+                Resource: '*'
+
+
+  BuildRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: !Join
+              - '-'
+              - - !Ref Prefix
+                - "codebuild-containerized"
+
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'codebuild:*'
+                  # Need this permission to use aws eks update-kubeconfig
+                  - 'eks:DescribeCluster'
+                  # Need this to retrieve image tags to find latest specific tag
+                  - 'ecr:DescribeImages'
+                  # Need to setup a service account via eksctl later...
+                  - 'iam:GetOpenIDConnectProvider'
+                  - 'cloudformation:ListStacks'
+                  - 'cloudformation:CreateStack'
+                  - 'cloudformation:DeleteStack'
+                  - 'cloudformation:DescribeStack'
+                  - 'cloudformation:DescribeStackEvents'
+                  - 'iam:CreateRole'
+                  - 'iam:DescribeRole'
+                  - 'iam:DeleteRole'
+                  - 'iam:AttachRolePolicy'
+                  - 'iam:DetachRolePolicy'
+                  - 'iam:GetRole'
+                  - 'iam:GetPolicy'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                  - 'lambda:ListFunctions'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                Resource: '*'
+                # ECR perms needed to build and push the testing container image
+              - Effect: Allow
+                Action:
+                  - 'ecr:BatchGetImage'
+                  - 'ecr:BatchCheckLayerAvailability'
+                  - 'ecr:CompleteLayerUpload'
+                  - 'ecr:GetDownloadUrlForLayer'
+                  - 'ecr:InitiateLayerUpload'
+                  - 'ecr:PutImage'
+                  - 'ecr:UploadLayerPart'
+                  - 'ecr:GetAuthorizationToken'
+                Resource: '*'
+                # Need to be able to retrieve Outputs and Exports from stacks...
+              - Effect: Allow
+                Action:
+                  - 'cloudformation:DescribeStacks'
+                  - 'cloudformation:ListExports'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'cloudwatch:*'
+                  - 'logs:CreateLogStream'
+                  - 'logs:CreateLogGroup'
+                  - 'logs:PutLogEvents'
+                  - 's3:*'
+                Resource: '*'
+
+  CFNDeployRole:
+      Type: 'AWS::IAM::Role'
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - cloudformation.amazonaws.com
+              Action: 'sts:AssumeRole'
+        Path: /
+        Policies:
+          - PolicyName: !Join
+              - '-'
+              - - !Ref Prefix
+                - "cfn-deploy-containerized"
+
+            PolicyDocument:
+              Version: 2012-10-17
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - 'iam:PassRole'
+                    - 'iam:CreateRole'
+                    - 'iam:DeleteRole'
+                    - 'iam:AttachRolePolicy'
+                    - 'iam:DeleteRolePolicy'
+                    - 'iam:DetachRolePolicy'
+                    - 'iam:PutRolePolicy'
+                    - 'iam:GetRole'
+                    - 'iam:CreatePolicy'
+                  Resource: !Join 
+                    - ''
+                    - - '*'
+                - Effect: Allow
+                  Action:
+                    - 'cloudformation:CreateChangeSet'
+                    - 'cloudformation:ExecuteChangeSet'
+                    - 'cloudformation:DescribeStacks'
+                    - 'cloudwatch:*'
+                    - 'ecs:*'
+                    - 'ec2:CreateSecurityGroup'
+                    - 'ec2:DescribeSecurityGroups'
+                    - 'ec2:DeleteSecurityGroup'
+                    - 'elasticloadbalancing:CreateTargetGroup'
+                    - 'elasticloadbalancing:DeleteTargetGroup'
+                    - 'elasticloadbalancing:DescribeTargetGroups'
+                    - 'elasticloadbalancing:ModifyTargetGroupAttributes'
+                    - 'elasticloadbalancing:DescribeListeners'
+                    - 'elasticloadbalancing:CreateListener'
+                    - 'elasticloadbalancing:DeleteListener'
+                    - 'logs:CreateLogGroup'
+                    - 'logs:DeleteLogGroup'
+                    - 'logs:Describe*'
+                    - 'logs:CreateLogStream'
+                    - 'logs:PutLogEvents'
+                    - 'ec2:AuthorizeSecurityGroupIngress'
+                    # TODO: Make more precise
+                    - 'dynamodb:*'
+                    - 'sqs:*'
+                    - 'sns:*'
+                    - 'iam:GetPolicy'
+                    - 'iam:ListPolicyVersions'
+                    - 'iam:DeletePolicy'
+                  Resource: '*'
+
+  CodeDeployRole:
+      Type: 'AWS::IAM::Role'
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - codedeploy.amazonaws.com
+                # MUST explicitly allow our CodePipeline role to assume this role.
+                AWS:
+                - !GetAtt CodePipelineServiceRole.Arn
+              Action: 'sts:AssumeRole'
+        Path: /
+        Policies:
+          - PolicyName: !Join
+              - '-'
+              - - !Ref Prefix
+                - "codedeploy-containerized"
+            PolicyDocument:
+              Version: 2012-10-17
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - 'iam:PassRole'
+                  Resource: "*"
+                - Effect: Allow
+                  Action: 'ecs:*'
+                  Resource: !Join 
+                    - ''
+                    - - '*'
+                - Effect: Allow
+                  Action: 'elbv2:*'
+                  Resource: !Join 
+                    - ''
+                    - - '*'
+                  
+Outputs:
+  
+  ArtifactStoreBucket:
+    Description: Where the build artifacts go.
+    Value: !Ref ArtifactStoreBucket
+    Export:
+      Name: !Join ['-', [!Ref Prefix, 'ArtifactStoreBucket']]
+  
+  # This is the Build Project for the App Container Image
+  BuildProject:
+    Value: !Ref BuildProject
+    Export:
+      Name: !Join ['-', [!Ref Prefix, 'BuildProject']]
+
+  ChartBuildProject:
+    Value: !Ref ChartBuildProject
+    Export:
+      Name: !Join ['-', [!Ref Prefix, 'ChartBuildProject']]
+
+  DeployBuildProject:
+    Value: !Ref DeployBuildProject
+    Export:
+      Name: !Join ['-', [!Ref Prefix, 'DeployBuildProject']]
+      
+  CodePipelineServiceRole:
+    Value: !GetAtt CodePipelineServiceRole.Arn
+    Export:
+      Name: !Join ['-', [!Ref Prefix, 'CodePipelineServiceRole']]
+
+  BuildRole:
+    Value: !GetAtt BuildRole.Arn
+    Export:
+      Name: !Join ['-', [!Ref Prefix, 'BuildRole']]
+      
+  CFNDeployRole:
+    Value: !GetAtt CFNDeployRole.Arn
+    Export:
+      Name: !Join ['-', [!Ref Prefix, 'CFNDeployRole']]
+
+  CodeDeployRole:
+    Value: !GetAtt CodeDeployRole.Arn
+    Export:
+      Name: !Join ['-', [!Ref Prefix, 'CodeDeployRole']]
