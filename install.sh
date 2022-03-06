@@ -34,6 +34,6 @@ echo "Creating EKS permissions..."
 ./03-eks-perms.sh $CLUSTER_NAME
 
 echo "Creating pipeline..."
-./05-pipeline.sh
+./04-pipeline.sh
 
 echo "Done."

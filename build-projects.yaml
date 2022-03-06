@@ -595,6 +595,9 @@ Resources:
                     - 'iam:GetPolicy'
                     - 'iam:ListPolicyVersions'
                     - 'iam:DeletePolicy'
+                    - 'ssm:PutParameter'
+                    - 'ssm:DeleteParameter'
+                    - 'ssm:AddTagsToResource'
                   Resource: '*'
 
   CodeDeployRole:

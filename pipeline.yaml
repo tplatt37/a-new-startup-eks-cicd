@@ -125,7 +125,7 @@ Resources:
       RoleArn: !ImportValue
         Fn::Join: [ '-', [!Ref Prefix, "CodePipelineServiceRole"]]
       Stages:
-        - Name: Source
+        - Name: Source-Chart
           Actions:
             - Name: Chart
               ActionTypeId:
@@ -143,13 +143,30 @@ Resources:
 
                 PollForSourceChanges: false
               RunOrder: 1
+            # We need the template.yaml file from the app source code to create the backend resources (DDB table, etc.)
+            - Name: Application-Code
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: CodeCommit
+              OutputArtifacts:
+                - Name: SourceAppOutput
+              Configuration:
+                BranchName: "main"
+                RepositoryName: 
+                  Fn::ImportValue:
+                    !Join ["-", [ !Ref Prefix, "AppRepo"]]
+
+                PollForSourceChanges: false
+              RunOrder: 1
 
         - Name: Deploy-Backend
           Actions:
             - Name: Deploy-Backend
               InputArtifacts:
                 # need to pass backend.yaml through from the source to the deploy stage.
-                - Name: SourceOutput
+                - Name: SourceAppOutput
               ActionTypeId:
                 Category: Deploy
                 Owner: AWS
@@ -162,7 +179,12 @@ Resources:
                   Fn::Join: [ '-', [!Ref Prefix, "CFNDeployRole"]]
                 # We're updating an existing stack.
                 StackName: !Join [ "-", [ !Ref Prefix, "backend"]]
-                TemplatePath: "SourceOutput::backend.yaml"
+                # THIS IS COMING FROM THE APP SOURCE CODE
+                # This is the template that creates the dynamically named DDB table, SNS Topic, and SQS queue.
+                TemplatePath: "SourceAppOutput::template.yaml"
+                # We're changing a parameter of the template - to ensure unique resource names.
+                # See here: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/continuous-delivery-codepipeline-action-reference.html
+                ParameterOverrides: '{"Prefix":"a-new-startup-eks","Environment":"dev"}'
 
         - Name: Deploy-k8s
           Actions:
