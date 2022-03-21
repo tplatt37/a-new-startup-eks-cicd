@@ -18,7 +18,7 @@ REGION=${AWS_DEFAULT_REGION:-$(aws configure get default.region)}
 PREFIX=a-new-startup-eks
 
 # NOTE: if you invoke with --yes it will skip these "Are you sure?" prompts
-if [[ -z $1 || $1 != "--yes" ]]; then
+if [[ $2 != "--yes" ]]; then
     read -p "This will delete all the $PREFIX-* stacks in $REGION. Are you sure? (Yy) " -n 1 -r
     echo    # (optional) move to a new line
     if [[ ! $REPLY =~ ^[Yy]$ ]]
