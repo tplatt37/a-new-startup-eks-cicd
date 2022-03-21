@@ -17,18 +17,21 @@ REGION=${AWS_DEFAULT_REGION:-$(aws configure get default.region)}
 
 PREFIX=a-new-startup-eks
 
-read -p "This will delete all the $PREFIX-* stacks in $REGION. Are you sure? (Yy) " -n 1 -r
-echo    # (optional) move to a new line
-if [[ ! $REPLY =~ ^[Yy]$ ]]
-then
-    exit 1
-fi
-
-read -p "Are you sure you are sure???? (Yy) " -n 1 -r
-echo    # (optional) move to a new line
-if [[ ! $REPLY =~ ^[Yy]$ ]]
-then
-    exit 1
+# NOTE: if you invoke with --yes it will skip these "Are you sure?" prompts
+if [[ -z $1 || $1 != "--yes" ]]; then
+    read -p "This will delete all the $PREFIX-* stacks in $REGION. Are you sure? (Yy) " -n 1 -r
+    echo    # (optional) move to a new line
+    if [[ ! $REPLY =~ ^[Yy]$ ]]
+    then
+        exit 1
+    fi
+    
+    read -p "Are you sure you are sure???? (Yy) " -n 1 -r
+    echo    # (optional) move to a new line
+    if [[ ! $REPLY =~ ^[Yy]$ ]]
+    then
+        exit 1
+    fi
 fi
 
 NAMESPACE="a-new-startup"
