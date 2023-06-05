@@ -55,8 +55,8 @@ Resources:
                 - LOCAL_DOCKER_LAYER_CACHE
         Environment:
             ComputeType: BUILD_GENERAL1_SMALL
-            # NOTE: Using Ubuntu/4.0 image - Docker already installed
-            Image: aws/codebuild/standard:4.0
+            # NOTE: Using Ubuntu/7.0 image - Docker already installed
+            Image: aws/codebuild/standard:7.0
             # Must be on for a container image build
             PrivilegedMode: true
             Type: LINUX_CONTAINER
@@ -94,7 +94,7 @@ Resources:
             Type: CODEPIPELINE
         Environment:
             ComputeType: BUILD_GENERAL1_SMALL
-            Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+            Image: aws/codebuild/standard:7.0
             PrivilegedMode: false
             Type: LINUX_CONTAINER
             EnvironmentVariables:
@@ -125,7 +125,7 @@ Resources:
             Type: CODEPIPELINE
         Environment:
             ComputeType: BUILD_GENERAL1_SMALL
-            Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+            Image: aws/codebuild/standard:7.0
             PrivilegedMode: false
             Type: LINUX_CONTAINER
             EnvironmentVariables:
