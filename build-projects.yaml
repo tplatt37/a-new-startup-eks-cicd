@@ -57,7 +57,7 @@ Resources:
             ComputeType: BUILD_GENERAL1_SMALL
             # NOTE: Using Ubuntu/7.0 image - Docker already installed
             Image: aws/codebuild/standard:7.0
-            # Must be on for a container image build
+            # Must be on for a container image build (because Docker Daemon runs as root))
             PrivilegedMode: true
             Type: LINUX_CONTAINER
             EnvironmentVariables:
@@ -113,7 +113,7 @@ Resources:
             - BuildRole
             - Arn
         Source:
-            BuildSpec: buildspec.yml
+            BuildSpec: buildspec-for-helm-package.yml
             Type: CODEPIPELINE
 
   # This project is used to deploy to the cluster using Helm (and the Container Image)
