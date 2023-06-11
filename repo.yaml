@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: A-New-Startup EKS - CodeCommit repos and ECR Repos used by the CI/CD Pipeline
+Description: A-New-Startup EKS - CodeCommit repos, ECR Repos, and S3 bucket used by the CI/CD Pipeline
 
 Parameters:
   Prefix:
@@ -14,26 +14,27 @@ Parameters:
 Resources:
   
   # The A-New-Startup application code will be stored here.  
-  AppRepo:
+  AppSourceRepo:
     Type: AWS::CodeCommit::Repository
     Properties: 
       RepositoryDescription: "The A-New-Startup application code (for EKS) - used in a CI/CD pipeline"
       # For CodeCommit, we must generate a unique name.  CloudFormation will not do it for us!
       # This is incorporating part of the StackId - which will be unique (often enough)
-      RepositoryName: !Join ['-', [!Ref Prefix, 'AppRepo', !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
+      RepositoryName: !Join ['-', [!Ref Prefix, 'AppSourceRepo', !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
       Code:
         BranchName: main
         S3:
           Bucket: !Ref Bucket
           Key: a-new-startup.zip
-          
-  ChartRepo:
+  
+  # Source code for the Helm chart will go here.        
+  ChartSourceRepo:
     Type: AWS::CodeCommit::Repository
     Properties: 
-      RepositoryDescription: "The A-New-Startup application code (for EKS) - used in a CI/CD pipeline"
+      RepositoryDescription: "The A-New-Startup Helm Chart code - used in a CI/CD pipeline"
       # For CodeCommit, we must generate a unique name.  CloudFormation will not do it for us!
       # This is incorporating part of the StackId - which will be unique (often enough)
-      RepositoryName: !Join ['-', [!Ref Prefix, 'ChartRepo', !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
+      RepositoryName: !Join ['-', [!Ref Prefix, 'ChartSourceRepo', !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
       Code:
         BranchName: main
         S3:
@@ -43,19 +44,33 @@ Resources:
   # ECR Repo for the Container Image we'll be creating.
   AppImage:
     Type: AWS::ECR::Repository
-    # CloudFormation will generate a dynamic name for us!        
+    # CloudFormation will generate a dynamic name for us!       
+    
+  # Helm charts will be stored in this s3 bucket.  
+  HelmChartRepo:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'AES256'
 
 Outputs:
 
-  AppRepo:
-    Value: !GetAtt AppRepo.Name
+  AppSourceRepo:
+    Value: !GetAtt AppSourceRepo.Name
     Export:
-      Name: !Join ['-', [!Ref Prefix, 'AppRepo']]
+      Name: !Join ['-', [!Ref Prefix, 'AppSourceRepo']]
       
-  ChartRepo:
-    Value: !GetAtt ChartRepo.Name
+  ChartSourceRepo:
+    Value: !GetAtt ChartSourceRepo.Name
     Export:
-      Name: !Join ['-', [!Ref Prefix, 'ChartRepo']]
+      Name: !Join ['-', [!Ref Prefix, 'ChartSourceRepo']]
+
+  HelmChartRepo:
+    Value: !Ref HelmChartRepo
+    Export:
+      Name: !Join ['-', [!Ref Prefix, 'HelmChartRepo']]
 
   AppImage:
     Value: !Ref AppImage

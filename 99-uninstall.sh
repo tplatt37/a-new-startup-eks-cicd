@@ -52,6 +52,15 @@ ECR_REPO=$(aws cloudformation list-exports --query "Exports[?Name=='$EXPORT_NAME
 
 aws ecr delete-repository --repository-name $ECR_REPO --force
 
+# Empty the S3 bucket used as Helm Chart Repository
+EXPORT_NAME=$PREFIX-HelmChartRepo
+HELM_REPO=$(aws cloudformation list-exports --query "Exports[?Name=='$EXPORT_NAME'].Value" --output text)
+
+# Empty the chart bucket (Otherwise stack delete will fail)
+echo "Will empty bucket $HELM_REPO - to prevent stack delete from failing..."
+aws s3 rm s3://$HELM_REPO --recursive
+
+
 # Keep this order! 
 
 # Delete the iam service account, via eksctl -because there's a CFN Stack, and k8s objects that need to be cleaned up.

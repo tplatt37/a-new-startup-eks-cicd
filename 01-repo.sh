@@ -56,9 +56,11 @@ else
         cp a-new-startup-helm.zip a-new-startup-helm-fallback.zip 
 fi
 
+# This zip file must be there so that CodeCommit can use it to populate the repo
 aws s3 cp a-new-startup-helm.zip s3://$BUCKET
 
 # Next, we need to create the CodeCommit and ECR repositories, via CloudFormation.
-aws cloudformation deploy --template-file repo.yaml --parameter-overrides Prefix=$PREFIX Bucket=$BUCKET --stack-name $PREFIX-repo 
-
-
+aws cloudformation deploy \
+  --template-file repo.yaml \
+  --parameter-overrides Prefix=$PREFIX Bucket=$BUCKET \
+  --stack-name $PREFIX-repo 

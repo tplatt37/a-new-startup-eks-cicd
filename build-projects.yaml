@@ -85,7 +85,7 @@ Resources:
             BuildSpec: buildspec-container.yml
             Type: CODEPIPELINE
 
-  # This project is used to "build" the Helm Chart (really just a simple lint check)
+  # This project is used to "build" (lint) and push (to Chart Repo) the Helm Chart 
   ChartBuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
@@ -108,6 +108,12 @@ Resources:
               Value:
                 Ref:
                   AWS::Region
+            - Name: HELM_CHART_REPO
+              Type: PLAINTEXT
+              Value:
+                Fn::ImportValue:
+                  !Join ["-", [ !Ref Prefix, "HelmChartRepo"]]
+
         ServiceRole:
             Fn::GetAtt:
             - BuildRole
@@ -116,7 +122,7 @@ Resources:
             BuildSpec: buildspec-for-helm-package.yml
             Type: CODEPIPELINE
 
-  # This project is used to deploy to the cluster using Helm (and the Container Image)
+  # This project is used to deploy to the cluster using Helm (and the Container Image and Chart Repo)
   DeployBuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
@@ -159,6 +165,11 @@ Resources:
               Value:
                 Fn::ImportValue:
                   !Join ["-", [ !Ref Prefix, "AppImage"]]
+            - Name: HELM_CHART_REPO
+              Type: PLAINTEXT
+              Value:
+                Fn::ImportValue:
+                  !Join ["-", [ !Ref Prefix, "HelmChartRepo"]]
 
         ServiceRole:
             Fn::GetAtt:
@@ -194,7 +205,7 @@ Resources:
               - ':'
               # Need to retrieve the CodeCommit Repo name from the first stack. It's an Export, so we use ImportValue here.
               - !ImportValue
-                Fn::Join: ["-", [ !Ref Prefix, "AppRepo"]]
+                Fn::Join: ["-", [ !Ref Prefix, "AppSourceRepo"]]
         detail:
           event:
             - referenceCreated
@@ -237,7 +248,7 @@ Resources:
                 - ':'
                 # Need to retrieve the CodeCommit Repo name from the first stack. It's an Export, so we use ImportValue here.
                 - !ImportValue
-                  Fn::Join: ["-", [ !Ref Prefix, "ChartRepo"]]
+                  Fn::Join: ["-", [ !Ref Prefix, "ChartSourceRepo"]]
           detail:
             event:
               - referenceCreated

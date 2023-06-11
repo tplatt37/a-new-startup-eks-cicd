@@ -42,7 +42,7 @@ Resources:
                 BranchName: "main"
                 RepositoryName: 
                   Fn::ImportValue:
-                    !Join ["-", [ !Ref Prefix, "AppRepo"]]
+                    !Join ["-", [ !Ref Prefix, "AppSourceRepo"]]
 
                 PollForSourceChanges: false
               RunOrder: 1
@@ -52,7 +52,6 @@ Resources:
               InputArtifacts:
                 - Name: SourceOutput
               OutputArtifacts:
-                # Need to include the .json files we create as part of the build process
                 - Name: BuildArtifact
               ActionTypeId:
                 Category: Build
@@ -64,7 +63,7 @@ Resources:
                   Fn::Join: [ '-', [!Ref Prefix, "BuildProject"]]
               RunOrder: 1
 
-  # This simple pipeline "Builds" the Chart (Does a lint to check and make sure it's valid).
+  # This simple pipeline builds (lint/package) the Helm Chart then pushes it to a Helm Chart Repo
   ChartPipeline:
     Type: 'AWS::CodePipeline::Pipeline'
     Properties:
@@ -90,17 +89,16 @@ Resources:
                 BranchName: "main"
                 RepositoryName: 
                   Fn::ImportValue:
-                    !Join ["-", [ !Ref Prefix, "ChartRepo"]]
+                    !Join ["-", [ !Ref Prefix, "ChartSourceRepo"]]
 
                 PollForSourceChanges: false
               RunOrder: 1
         - Name: Build
           Actions:
-            - Name: Build-Chart
+            - Name: Build-Push-Chart
               InputArtifacts:
                 - Name: SourceOutput
               OutputArtifacts:
-                # Need to include the .json files we create as part of the build process
                 - Name: BuildArtifact
               ActionTypeId:
                 Category: Build
@@ -125,26 +123,28 @@ Resources:
       RoleArn: !ImportValue
         Fn::Join: [ '-', [!Ref Prefix, "CodePipelineServiceRole"]]
       Stages:
-        - Name: Source-Chart
+        # We need this to get the buildspec used by CodeBuild
+        - Name: SourceCode
           Actions:
-            - Name: Chart
+            # Need the buildspec for the deploy codebuild
+            - Name: Chart-Source-For-Buildspec
               ActionTypeId:
                 Category: Source
                 Owner: AWS
                 Version: 1
                 Provider: CodeCommit
               OutputArtifacts:
-                - Name: SourceOutput
+                - Name: BuildspecOutput
               Configuration:
                 BranchName: "main"
                 RepositoryName: 
                   Fn::ImportValue:
-                    !Join ["-", [ !Ref Prefix, "ChartRepo"]]
-
+                    !Join ["-", [ !Ref Prefix, "ChartSourceRepo"]]
                 PollForSourceChanges: false
               RunOrder: 1
+
             # We need the template.yaml file from the app source code to create the backend resources (DDB table, etc.)
-            - Name: Application-Code
+            - Name: App-Source-For-IaC-Template
               ActionTypeId:
                 Category: Source
                 Owner: AWS
@@ -156,14 +156,14 @@ Resources:
                 BranchName: "main"
                 RepositoryName: 
                   Fn::ImportValue:
-                    !Join ["-", [ !Ref Prefix, "AppRepo"]]
+                    !Join ["-", [ !Ref Prefix, "AppSourceRepo"]]
 
                 PollForSourceChanges: false
               RunOrder: 1
 
-        - Name: Deploy-Backend
+        - Name: Deploy-Backend-IaC
           Actions:
-            - Name: Deploy-Backend
+            - Name: Deploy-Backend-Cfn
               InputArtifacts:
                 # need to pass backend.yaml through from the source to the deploy stage.
                 - Name: SourceAppOutput
@@ -186,14 +186,15 @@ Resources:
                 # See here: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/continuous-delivery-codepipeline-action-reference.html
                 ParameterOverrides: '{"Prefix":"a-new-startup-eks","Environment":"dev"}'
 
-        - Name: Deploy-k8s
+        - Name: Deploy-k8s-via-Chart
           Actions:
             - Name: Deploy-Chart
               InputArtifacts:
-                - Name: SourceOutput
-              OutputArtifacts:
-                # Need to include the .json files we create as part of the build process
-                - Name: DeployArtifact 
+                # We need the Chart Source solely to get the BUILDSPEC file for this project.
+                # Otherwise...
+                # We don't really need this (the chart pushed to S3 and env vars are the only thing
+                # we actually need)
+                - Name: BuildspecOutput
               ActionTypeId:
                 Category: Build
                 Owner: AWS
