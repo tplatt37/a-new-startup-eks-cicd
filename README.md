@@ -6,7 +6,7 @@ Given an EKS cluster, this example will create 3 CodePipeline pipelines:
 
 1. A pipeline to build a container image of A-New-Startup
 2. A pipeline to "build" (lint, really) a Helm chart to be used for installing A-New-Startup
-3. A pipeline to use both the Helm chart and Container image to deploy onto the EKS Cluster.
+3. A pipeline to use both the Helm chart (Stored in an S3 Chart Repo) and Container image to deploy onto the EKS Cluster.
 
 # Requirements
 
@@ -25,6 +25,7 @@ This sample creates:
 
 * CodeCommit Repo for the Application code, and a Helm Chart
 * ECR Repo for holding the Container Image of the app
+* S3 Bucket to serve as a Helm Chart Repo 
 * A DynamoDB Table, SNS Topic, and SQS queue required by the app
 * Three CI/CD Pipelines:
 1. To build a container image of the app
