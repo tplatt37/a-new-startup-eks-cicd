@@ -16,6 +16,11 @@ Parameters:
     Type: String
     Default: "a-new-startup"
     Description: "The k8s namespace that has been created for this application."
+
+  CIDRIPS:
+    Type: String
+    Default: ""
+    Description: "Optional comma delimited list of CIDR IPs to be used to lockdown access to the app"
     
 Resources:
   
@@ -170,6 +175,9 @@ Resources:
               Value:
                 Fn::ImportValue:
                   !Join ["-", [ !Ref Prefix, "HelmChartRepo"]]
+            - Name: CIDRIPS 
+              Type: PLAINTEXT
+              Value: !Ref CIDRIPS
 
         ServiceRole:
             Fn::GetAtt:

@@ -14,8 +14,11 @@ if [ -z $2 ]; then
 fi
 CLUSTER_NAME=$2
 
+# Optional 3rd parameter is a comma delimited list of CIDR IPs
+CIDRIPS=$3
+
 REGION=${AWS_DEFAULT_REGION:-$(aws configure get default.region)}
-echo "Creating in $REGION..."
+echo "Creating in $REGION... using bucket $BUCKET. ELB access will be limited to $CIDRIPS..."
 
 # Confirm cluster is valid
 aws eks describe-cluster --name $CLUSTER_NAME > /dev/null 
@@ -28,7 +31,7 @@ echo "Creating repos..."
 ./01-repo.sh $BUCKET
 
 echo "Creating build-projects..."
-./02-build-projects.sh $CLUSTER_NAME
+./02-build-projects.sh $CLUSTER_NAME $CIDRIPS
 
 echo "Creating EKS permissions..."
 ./03-eks-perms.sh $CLUSTER_NAME

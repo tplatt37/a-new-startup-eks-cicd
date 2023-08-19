@@ -7,8 +7,11 @@ if [ -z $1 ]; then
 fi
 CLUSTER_NAME=$1
 
+# Comma delimited list of CIDRs to use for Inbound rule on SG
+CIDRIPS=$2
+
 REGION=${AWS_DEFAULT_REGION:-$(aws configure get default.region)}
-echo "Creating in $REGION..."
+echo "Creating in $REGION...($CIDRIPS)"
 
 PREFIX=a-new-startup-eks
 
@@ -16,4 +19,6 @@ PREFIX=a-new-startup-eks
 NAMESPACE="a-new-startup"
 
 echo "Creating build projects and related roles ..."
-aws cloudformation deploy --template-file build-projects.yaml --stack-name $PREFIX-build-projects --parameter-overrides Prefix=$PREFIX ClusterName=$CLUSTER_NAME Namespace=$NAMESPACE --capabilities CAPABILITY_NAMED_IAM
+aws cloudformation deploy --template-file build-projects.yaml --stack-name $PREFIX-build-projects \
+--parameter-overrides Prefix=$PREFIX ClusterName=$CLUSTER_NAME Namespace=$NAMESPACE CIDRIPS=$CIDRIPS \
+--capabilities CAPABILITY_NAMED_IAM
