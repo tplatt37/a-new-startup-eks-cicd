@@ -512,6 +512,7 @@ Resources:
                   - 'iam:DetachRolePolicy'
                   - 'iam:GetRole'
                   - 'iam:GetPolicy'
+                  - 'iam:TagRole'
                 Resource: '*'
               - Effect: Allow
                 Action:
