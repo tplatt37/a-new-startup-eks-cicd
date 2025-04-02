@@ -30,6 +30,9 @@ kubectl create rolebinding codebuild-deploy-admin-default --clusterrole=admin --
 # Giving ability to read secrets cluster wide, also needed by Helm.
 kubectl create clusterrolebinding codebuild-secret-reader --clusterrole=secret-reader --user=codebuild-deploy
 
+# Just give it cluster admin - there are some things it needs at cluster scope for Ingresses.
+kubectl create clusterrolebinding codebuild-deploy-admin --clusterrole=cluster-admin --user=codebuild-deploy
+
 # Need to get the Arn of the Role that the Build Project uses in CodeBuild. It's an Export in one of the stacks.
 EXPORT_NAME=$PREFIX-BuildRole
 DEPLOY_ROLE_ARN=$(aws cloudformation list-exports --query "Exports[?Name=='$EXPORT_NAME'].Value" --output text)

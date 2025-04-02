@@ -548,6 +548,7 @@ Resources:
                   - 'logs:CreateLogGroup'
                   - 'logs:PutLogEvents'
                   - 's3:*'
+                  - 'eks:DescribeClusterVersions'
                 Resource: '*'
 
   CFNDeployRole:
